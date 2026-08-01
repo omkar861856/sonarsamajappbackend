@@ -8,59 +8,67 @@ on:
 
 jobs:
   deploy:
-    name: Deploy to Server
+    name: Deploy to Server via SSH
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Deploying via SSH
+      - name: Verify SSH Secrets
+        run: |
+          if [ -z "${{ secrets.SSH_HOST }}" ]; then
+            echo "ERROR: SSH_HOST secret is missing in GitHub Repository Secrets!"
+            exit 1
+          fi
+          if [ -z "${{ secrets.SSH_KEY }}" ]; then
+            echo "ERROR: SSH_KEY secret is missing in GitHub Repository Secrets!"
+            exit 1
+          fi
+          echo "SSH Host and Key secrets verified."
+
+      - name: Execute Deployment via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER || 'root' }}
           key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
+          port: 22
+          script_stop: true
           script: |
             set -e
-            TARGET_DIR="${{ secrets.TARGET_DIR || '/root/sonarsamajbackend' }}"
-            APP_PORT="${{ secrets.PORT || 3001 }}"
+            TARGET_DIR="/root/sonarsamajbackend"
+            APP_PORT="3001"
 
-            echo "Deploying to directory: $TARGET_DIR on host port: $APP_PORT"
+            echo "Deploying backend to: $TARGET_DIR on port: $APP_PORT"
 
-            # Create target directory if it doesn't exist
             mkdir -p $TARGET_DIR
             cd $TARGET_DIR
 
-            # Clone repository if not present; pull if existing
             if [ ! -d ".git" ]; then
-              echo "Cloning repository..."
+              echo "Cloning backend repository..."
               git clone https://github.com/omkar861856/sonarsamajappbackend.git .
             else
-              echo "Fetching latest changes..."
+              echo "Pulling latest code..."
               git fetch origin main
               git reset --hard origin/main
             fi
 
-            # Generate .env configuration file
-            echo "Creating .env configuration..."
-            cat << EOF > .env
+            echo "Writing environment configuration..."
+            cat << 'EOF' > .env
 PORT=3000
-MONGO_URI=${{ secrets.MONGO_URI || 'mongodb://host.docker.internal:27018/sonar_db' }}
+MONGO_URI=mongodb://host.docker.internal:27018/sonar_db
 JWT_SECRET=${{ secrets.JWT_SECRET }}
 GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
 EOF
 
-            # Deploy using Docker with explicit name & port mapping
-            echo "Building and launching Docker container sonarsamaj-backend..."
+            echo "Building Docker image..."
             docker build -t sonarsamaj-backend .
 
-            # Stop and remove existing container if running
+            echo "Restarting Docker container..."
             docker stop sonarsamaj-backend || true
             docker rm sonarsamaj-backend || true
 
-            # Run new container, exposing on host port $APP_PORT (default 3001)
             docker run -d \
               --name sonarsamaj-backend \
               --restart always \
@@ -69,4 +77,4 @@ EOF
               --env-file .env \
               sonarsamaj-backend
 
-            echo "Deployment successfully completed! App listening on host port $APP_PORT."
+            echo "SUCCESS: SonarSamaj backend is running on port $APP_PORT!"
