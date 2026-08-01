@@ -31,13 +31,16 @@ export const translateForm = async (req: Request, res: Response) => {
       return res.json({ translated: formData, warning: "GEMINI_API_KEY missing." });
     }
 
-    const ai = new GoogleGenAI(geminiApiKey);
-    const model = ai.getGenerativeModel({ model: "gemini-pro" });
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
     const prompt = `Translate all string values in this JSON to standard English. Keep keys unchanged. Return ONLY JSON.\n\nJSON:\n${JSON.stringify(formData)}`;
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const translated = JSON.parse(response.text());
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+    });
+    
+    const translatedText = response.text || '{}';
+    const translated = JSON.parse(translatedText);
 
     translationCache.set(cacheKey, { data: translated, expiry: now + 600000 });
     res.json({ translated });

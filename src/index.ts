@@ -7,6 +7,7 @@ import { connectDB } from './config/db.js';
 
 import authRoutes from './routes/auth.routes.js';
 import aiRoutes from './routes/ai.routes.js';
+import familyRoutes from './routes/family.routes.js';
 
 dotenv.config();
 
