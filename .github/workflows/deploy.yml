@@ -1,0 +1,83 @@
+name: Deploy Backend to Server
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Remote Server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Executing remote SSH commands
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            TARGET_DIR="${{ secrets.TARGET_DIR }}"
+            if [ -z "$TARGET_DIR" ]; then
+              TARGET_DIR="~/backend"
+            fi
+
+            echo "Deploying to directory: $TARGET_DIR"
+
+            # Create target directory if it doesn't exist
+            mkdir -p $TARGET_DIR
+            cd $TARGET_DIR
+
+            # If git repo is not initialized on server, clone it; otherwise pull
+            if [ ! -d ".git" ]; then
+              echo "Cloning repository..."
+              git clone https://github.com/omkar861856/sonarsamajappbackend.git .
+            else
+              echo "Fetching latest changes..."
+              git fetch origin main
+              git reset --hard origin/main
+            fi
+
+            # Generate .env file from GitHub Secrets
+            echo "Creating .env configuration..."
+            cat << 'EOF' > .env
+PORT=${{ secrets.PORT }}
+MONGO_URI=${{ secrets.MONGO_URI }}
+JWT_SECRET=${{ secrets.JWT_SECRET }}
+GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+EOF
+
+            # Deployment Strategy:
+            # Check if Docker is available, otherwise use PM2 / npm
+            if command -v docker &> /dev/null; then
+              echo "Deploying using Docker..."
+              docker build -t sonar-backend .
+              docker stop sonar-backend || true
+              docker rm sonar-backend || true
+              docker run -d \
+                --name sonar-backend \
+                --restart always \
+                -p ${{ secrets.PORT || 3000 }}:3000 \
+                --env-file .env \
+                sonar-backend
+            elif command -v pm2 &> /dev/null; then
+              echo "Deploying using PM2..."
+              npm install
+              npm run build
+              pm2 restart sonar-backend || pm2 start dist/index.js --name sonar-backend
+              pm2 save
+            else
+              echo "Deploying using npm..."
+              npm install
+              npm run build
+              npm start &
+            fi
+
+            echo "Deployment successfully finished!"
