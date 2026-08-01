@@ -37,6 +37,7 @@ jobs:
           script_stop: true
           envs: JWT_SECRET,GEMINI_API_KEY,MONGO_URI
           script: |
+            set -x
             set -e
             TARGET_DIR="/root/sonarsamajbackend"
             APP_PORT="3001"
@@ -46,13 +47,18 @@ jobs:
             mkdir -p $TARGET_DIR
             cd $TARGET_DIR
 
-            if [ ! -d ".git" ]; then
-              echo "Cloning repository..."
-              git clone https://github.com/omkar861856/sonarsamajappbackend.git .
-            else
+            # Ensure clean Git repo fetch (works even if directory is non-empty)
+            if [ -d ".git" ]; then
               echo "Fetching latest changes..."
               git fetch origin main
               git reset --hard origin/main
+            else
+              echo "Initializing Git repo..."
+              git init
+              git remote add origin https://github.com/omkar861856/sonarsamajappbackend.git || git remote set-url origin https://github.com/omkar861856/sonarsamajappbackend.git
+              git fetch origin main
+              git reset --hard origin/main
+              git branch -M main
             fi
 
             echo "Generating .env file..."
