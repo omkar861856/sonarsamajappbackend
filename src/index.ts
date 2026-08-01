@@ -28,7 +28,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/families', familyRoutes);
 
-// Basic Route
+// Basic Routes
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', message: 'Sonar Shehbandh API is live', health: '/api/health' });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Sonar Shehbandh API is running' });
 });
