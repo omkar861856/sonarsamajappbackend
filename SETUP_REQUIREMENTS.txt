@@ -1,0 +1,94 @@
+================================================================================
+SONAR SAMAJ BACKEND - PRODUCTION DEPLOYMENT & CI/CD SETUP REQUIREMENTS
+================================================================================
+
+1. REPOSITORY & CI/CD OVERVIEW
+--------------------------------------------------------------------------------
+Repository: https://github.com/omkar861856/sonarsamajappbackend.git
+Branch: main
+CI/CD Workflow: .github/workflows/deploy.yml
+Deployment Method: GitHub Actions SSH runner deploying via Docker
+
+
+2. GITHUB REPOSITORY SECRETS REQUIRED
+--------------------------------------------------------------------------------
+Navigate to: GitHub Repo -> Settings -> Secrets and variables -> Actions
+
+Required Secrets:
+  - SSH_HOST        : Server Public IP Address (e.g. 178.92.91.x)
+  - SSH_USER        : Server SSH User (e.g. root)
+  - SSH_KEY         : Private SSH Key (Full content of ~/.ssh/id_rsa or .pem file)
+  - PORT            : 3001 (Avoids port 3000 collision with existing Grafana)
+  - MONGO_URI       : mongodb://host.docker.internal:27018/sonar_db (or Mongo Atlas URI)
+  - JWT_SECRET      : Your application JWT secret key
+  - GEMINI_API_KEY  : Your Google Gemini API Key
+
+
+3. SERVER & PORT MAPPING CONFIGURATION
+--------------------------------------------------------------------------------
+Server Hostname: root@srv1789291
+Container Name : sonarsamaj-backend
+Host Port      : 3001
+Container Port : 3000
+Target Directory: /root/sonarsamajbackend
+
+Existing Services on Server (Preserved & Isolated):
+  - Grafana           -> Port 3000
+  - MongoDB (Host)    -> Port 27018
+  - Signal Generator  -> Ports 3005, 8001, 8002, 6379, 3100, 9090, 9093
+
+
+4. DOMAIN & DNS CONFIGURATION
+--------------------------------------------------------------------------------
+Domain Target: sonarapi.quotewear.store
+
+DNS Record to Add in Registrar (GoDaddy/Cloudflare/Hostinger/etc.):
+  - Record Type: A
+  - Host / Name: sonarapi
+  - Points To  : YOUR_SERVER_IP
+  - TTL        : Auto / 300 seconds
+
+
+5. SERVER NGINX & SSL (HTTPS) SETUP COMMANDS
+--------------------------------------------------------------------------------
+Run the following commands on your server (root@srv1789291):
+
+# Step A: Create Nginx Reverse Proxy Config
+cat << 'EOF' > /etc/nginx/sites-available/sonarapi.quotewear.store
+server {
+    listen 80;
+    server_name sonarapi.quotewear.store;
+
+    client_max_body_size 50M;
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+# Step B: Enable Site & Test Nginx Configuration
+ln -sf /etc/nginx/sites-available/sonarapi.quotewear.store /etc/nginx/sites-enabled/
+nginx -t
+systemctl reload nginx
+
+# Step C: Enable Free SSL Certificate (Certbot)
+apt update && apt install -y certbot python3-certbot-nginx
+certbot --nginx -d sonarapi.quotewear.store
+
+
+6. VERIFICATION ENDPOINTS
+--------------------------------------------------------------------------------
+- Domain Root Endpoint  : https://sonarapi.quotewear.store/
+- Health Check Endpoint : https://sonarapi.quotewear.store/api/health
+- Direct IP Port Check  : http://YOUR_SERVER_IP:3001/api/health
+
+================================================================================
